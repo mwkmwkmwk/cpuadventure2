@@ -1,0 +1,381 @@
+start:
+	ST	@-1, [my_pid]
+loop:
+	SVC	0
+	CMP	@1, -2
+	JZ	notify_croak
+	CMP	@1, -1
+	JZ	notify_attack
+	CMP	@1, 0
+	JZ	pick_action
+	CMP	@1, 1
+	JZ	notify_square
+	CMP	@1, 2
+	JZ	notify_give
+	CMP	@1, 3
+	JZ	notify_use
+	J	loop
+
+notify_attack:
+	# attack notification
+	MOV	@-3, @2
+	MOV	@-2, @3
+
+	MOV	@1, "Attack: "
+	J	@-1, log_str
+	MOV	@1, @-3
+	J	@-1, log_int
+	MOV	@1, ", "
+	J	@-1, log_str
+	MOV	@1, @-2
+	J	@-1, log_int
+	MOV	@1, -1
+	J	@-1, log_finish
+
+	LD	@1, [my_pid]
+	CMP	@-2, @1
+	JNZ	loop
+	LD	@1, [enemy]
+	CMP	@-3, @1
+	JZ	loop
+	# new enemy
+	ST	@-3, [enemy]
+	MOV	@1, @-3
+	SVC	2
+	AND	@2, @1, #00000++++
+	ST	@2, [en_x]
+	SHR	@2, @1, 4
+	ST	@2, [en_y]
+	MOV	@1, "\"Argh!  Die, you little...\""
+	MOV	@2, 1
+	SVC	1
+	J	loop
+
+notify_croak:
+	# croak notification
+	MOV	@-3, @2
+	MOV	@-2, @3
+
+	MOV	@1, "Croak: "
+	J	@-1, log_str
+	MOV	@1, @-3
+	J	@-1, log_int
+	MOV	@1, ", "
+	J	@-1, log_str
+	MOV	@1, @-2
+	J	@-1, log_int
+	MOV	@1, -1
+	J	@-1, log_finish
+
+	LD	@1, [my_pid]
+	CMP	@-2, @1
+	JZ	croak_self
+	LD	@1, [enemy]
+	CMP	@-2, @1
+	JNZ	loop
+	ST	@0, [enemy]
+	J	loop
+
+croak_self:
+	MOV	@1, "You idiot.  Now you will never know the flag."
+	MOV	@2, 3
+	SVC	1
+	J	loop
+
+notify_use:
+	MOV	@1, "valis drinks a redbull."
+	MOV	@2, 0
+	SVC	1
+	J	loop
+
+notify_give:
+	SUB	@-4, 3
+	ST	@2, [@-4 + 0]
+	ST	@3, [@-4 + 1]
+	ST	@4, [@-4 + 2]
+
+	MOV	@1, "Give: "
+	J	@-1, log_str
+	LD	@1, [@-4 + 0]
+	J	@-1, log_int
+	MOV	@1, ", "
+	J	@-1, log_str
+	LD	@1, [@-4 + 1]
+	J	@-1, log_int
+	MOV	@1, ", "
+	J	@-1, log_str
+	LD	@1, [@-4 + 2]
+	J	@-1, log_int
+	MOV	@1, -1
+	J	@-1, log_finish
+
+	LD	@1, [@-4 + 1]
+	CMP	@1, -2
+	JZ	give_redbull
+	CMP	@1, -5
+	JZ	give_mcguffin
+
+	MOV	@1, "valis is not particularly interested."
+	MOV	@2, 1
+	SVC	1
+give_end:
+	ADD	@-4, 2
+	J	loop
+
+give_redbull:
+	LD	@2, [@-4 + 2]
+	LD	@1, [redbulls]
+	ADD	@1, @2
+	ST	@1, [redbulls]
+	CMP	@2, 4
+	JG	ext_happy
+	LD	@2, [redbull_jtable + @2]
+	J	@2
+
+happy_one:
+	MOV	@1, "valis happily accepts a redbull."
+	MOV	@2, 0
+	SVC	1
+	J	give_end
+
+happy:
+	MOV	@1, "valis happily accepts "
+	J	@-1, log_str
+	LD	@1, [@-4 + 2]
+	J	@-1, log_int
+	MOV	@1, " redbulls."
+	J	@-1, log_str
+	MOV	@1, 0
+	J	@-1, log_finish
+	J	give_end
+
+very_happy:
+	MOV	@1, "valis very happily accepts "
+	J	@-1, log_str
+	LD	@1, [@-4 + 2]
+	J	@-1, log_int
+	MOV	@1, " redbulls."
+	J	@-1, log_str
+	MOV	@1, 0
+	J	@-1, log_finish
+	J	give_end
+
+ext_happy:
+	MOV	@1, "valis extremely happily accepts "
+	J	@-1, log_str
+	LD	@1, [@-4 + 2]
+	J	@-1, log_int
+	MOV	@1, " redbulls."
+	J	@-1, log_str
+	MOV	@1, 0
+	J	@-1, log_finish
+	J	give_end
+
+give_mcguffin:
+	MOV	@1, "Congratulations!  Here's your flag:"
+	MOV	@2, 0
+	SVC	1
+	MOV	@1, flag
+	SVC	3
+	MOV	@1, flag
+	MOV	@2, 0
+	SVC	1
+	J	give_end
+
+notify_square:
+	CMP	@3, 0
+	JLE	loop
+	LD	@-1, [enemy]
+	CMP	@4, @-1
+	JZ	track_enemy
+	LD	@-1, [my_pid]
+	CMP	@4, @-1
+	JZ	track_me
+	CMP	@4, 1
+	JNZ	loop
+	LD	@1, [gave_story]
+	CMP	@1, 4
+	JGE	loop
+	AND	@1, @2, #00000++++
+	LD	@3, [my_x]
+	SUB	@1, @3
+	AND	@1, #++++++++0
+	JNZ	loop
+	SHR	@1, @2, 4
+	LD	@3, [my_y]
+	SUB	@1, @3
+	AND	@1, #++++++++0
+	JNZ	loop
+	LD	@1, [gave_story]
+	LD	@1, [story + @1]
+	MOV	@2, 0
+	SVC	1
+	LD	@1, [gave_story]
+	ADD	@1, 1
+	ST	@1, [gave_story]
+	J	loop
+
+track_me:
+	AND	@1, @2, #00000++++
+	ST	@1, [my_x]
+	SHR	@2, 4
+	ST	@2, [my_y]
+	J	loop
+track_enemy:
+	AND	@1, @2, #00000++++
+	ST	@1, [en_x]
+	SHR	@2, 4
+	ST	@2, [en_y]
+	J	loop
+
+pick_action:
+	LD	@1, [redbulls]
+	CMP	@1, 0
+	JNZ	pick_action_redbull
+	MOV	@4, 0
+	LD	@1, [enemy]
+	CMP	@1, 0
+	JZ	pick_action_null
+pick_action_attack:
+	MOV	@4, 1
+	LD	@1, [en_x]
+	LD	@2, [my_x]
+	CMP	@1, @2
+	GETF	@-2, @SF
+	LD	@1, [en_y]
+	LD	@2, [my_y]
+	CMP	@1, @2
+	GETF	@-3, @SF
+	LD	@1, [my_x]
+	ADD	@1, @-2
+	LD	@2, [en_x]
+	CMP	@1, @2
+	JNZ	pick_action_move
+	LD	@1, [my_y]
+	ADD	@1, @-3
+	LD	@2, [en_y]
+	CMP	@1, @2
+	JNZ	pick_action_move
+	MOV	@1, 1
+	J	pick_action_dir
+
+pick_action_rnd:
+	RNG	@-2
+	RNG	@-3
+	AND	@-2, 1
+	AND	@-3, 1
+	MOV	@4, 0
+pick_action_move:
+	LD	@1, [my_x]
+	ADD	@1, @-2
+	AND	@0, @1, #+++++0000
+	JNZ	pick_action_null
+	LD	@2, [my_y]
+	ADD	@2, @-3
+	AND	@0, @2, #++++++000
+	JNZ	pick_action_null
+	SHL	@2, 4
+	XOR	@1, @2
+	SVC	-1
+	CMP	@1, 0
+	JG	pick_action_null
+	MOV	@1, 0
+pick_action_dir:
+	SHL	@2, @-3, 1
+	XOR	@2, @-2
+	J	loop
+pick_action_null:
+	CMP	@4, 1
+	JZ	pick_action_rnd
+	MOV	@1, 0
+	MOV	@2, 0
+	J	loop
+
+pick_action_redbull:
+	SUB	@1, 1
+	ST	@1, [redbulls]
+	MOV	@1, 4
+	MOV	@2, -2
+	J	loop
+
+log_int:
+	LD	@2, [log_pos]
+	ADD	@2, log_buf
+	CMP	@1, @0
+	JGE	log_int_pos
+	JZ	log_int_zero
+	MOV	@3, '-'
+	ST	@3, [@2++]
+	NEG	@1, @1
+log_int_pos:
+	MOV	@3, int_log_buf + 4
+log_int_loop1:
+	MOD	@4, @1, 10
+	DIV	@1, @1, 10
+	ADD	@4, '0'
+	ST	@4, [@3--]
+	CMP	@1, @0
+	JNZ	log_int_loop1
+	ADD	@3, 1
+log_int_loop2:
+	LD	@1, [@3++]
+	CMP	@1, @0
+	JZ	log_int_end
+	ST	@1, [@2++]
+	J	log_int_loop2
+
+log_int_zero:
+	MOV	@3, '0'
+	ST	@3, [@2++]
+log_int_end:
+	SUB	@2, log_buf
+	ST	@2, [log_pos]
+	J	@-1
+
+log_str:
+	LD	@2, [log_pos]
+	ADD	@2, log_buf
+log_str_loop:
+	LD	@3, [@1++]
+	ST	@3, [@2++]
+	CMP	@3, @0
+	JNZ	log_str_loop
+	SUB	@2, log_buf+1
+	ST	@2, [log_pos]
+	J	@-1
+
+log_finish:
+	MOV	@2, @1
+	LD	@1, [log_pos]
+	ST	@0, [log_buf + @1]
+	MOV	@1, log_buf
+	SVC	1
+log_clear:
+	ST	@0, [log_pos]
+	J	@-1
+
+redbull_jtable:	BYTE	loop
+		BYTE	happy_one
+		BYTE	happy
+		BYTE	very_happy
+		BYTE	very_happy
+
+story:		BYTE	"\"Hey, you!\""
+		BYTE	"\"Do you want the flag?\""
+		BYTE	"\"There is a Cyberdragon running around here.\""
+		BYTE	"\"Bring me its head and you will get the flag!\""
+
+STRINGPOOL
+
+gave_story:	BYTE	0
+my_pid:		BYTE	0
+enemy:		BYTE	0
+my_x:		BYTE	0
+my_y:		BYTE	0
+en_x:		BYTE	0
+en_y:		BYTE	0
+redbulls:	BYTE	0
+flag:		BYTES	81
+int_log_buf:	BYTES	9
+log_pos:	BYTE	0
+log_buf:	BYTES 243

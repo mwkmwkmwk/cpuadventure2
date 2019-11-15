@@ -1,0 +1,1529 @@
+	CONST proc_type,	0
+	CONST proc_chain,	1
+	CONST proc_pid,		2
+	CONST proc_name,	3
+	CONST proc_xy,		4
+	CONST proc_hp,		5
+	CONST proc_drunk,	6
+	CONST proc_attack,	7
+	CONST proc_speed,	8
+	CONST proc_move,	9
+	CONST proc_inv,		10
+	CONST proc_pgt_ptr,	11
+	CONST proc_pgt_reg,	12
+	CONST proc_pc,		13
+	CONST proc_psw,		14
+	CONST proc_regs,	15
+	CONST proc_iterator,	23
+	CONST proc_size,	24
+
+	CONST item_type,	0
+	CONST item_chain,	1
+	CONST item_count,	2
+	CONST item_size,	3
+
+	CONST pdesc_name,	0
+	CONST pdesc_type,	1
+	CONST pdesc_hp,		2
+	CONST pdesc_drunk,	3
+	CONST pdesc_attack,	4
+	CONST pdesc_speed,	5
+	CONST pdesc_item,	6
+
+	CONST type_mcguffin,	-5
+	CONST type_empty,	-4
+	CONST type_vodka,	-3
+	CONST type_redbull,	-2
+	CONST type_walizka,	-1
+	CONST type_pc,		1
+	CONST type_valis,	2
+	CONST type_blue,	3
+	CONST type_white,	4
+	CONST type_drunk,	5
+	CONST type_cyber,	6
+
+	CONST notify_bump,	-3
+	CONST notify_croak,	-2
+	CONST notify_attack,	-1
+	CONST notify_square,	1
+	CONST notify_give,	2
+	CONST notify_use,	3
+
+	CONST num_pids, 27
+
+	CONST vector_pf_x, -12
+	CONST vector_pf_w, -9
+	CONST vector_pf_r, -6
+	CONST vector_df, -3
+
+vector_reset:
+	J	reset_handler
+	BYTE	0
+vector_syscall:
+	J	syscall_handler
+	BYTE	0
+vector_priverr:
+	J	priverr_handler
+	BYTE	0
+vector_illegal:
+	J	illegal_handler
+	BYTE	0
+vector_div0:
+	J	div0_handler
+
+reset_handler:
+	MOV	@1, "Initializing operating system..."
+	MOV	@2, -1
+	HVC	1
+
+	# Write out remaining handlers.
+	MOV	@1, #---000000
+	ST	@1, [vector_pf_x]
+	ST	@1, [vector_pf_w]
+	ST	@1, [vector_pf_r]
+	ST	@1, [vector_df]
+	MOV	@1, pf_x_handler
+	ST	@1, [vector_pf_x+1]
+	MOV	@1, pf_w_handler
+	ST	@1, [vector_pf_w+1]
+	MOV	@1, pf_r_handler
+	ST	@1, [vector_pf_r+1]
+	MOV	@1, df_handler
+	ST	@1, [vector_df+1]
+
+	# Initialize page allocator.
+	MOV	@1, data_end-1
+	SHR	@1, 6
+	ST	@1, [last_pg]
+	MOV	@1, data_end
+	ST	@1, [heap_end]
+
+	# Initialize kernel page tables.
+	MOV	@1, @0
+	MOV	@2, rodata_start
+	SHR	@2, 6
+init_pgt_code_loop:
+	SHL	@3, @1, 3
+	XOR	@3, #00000000-
+	ST	@3, [kernel_pgt + @1]
+	ADD	@1, 1
+	CMP	@1, @2
+	JNZ	init_pgt_code_loop
+	MOV	@2, data_start
+	SHR	@2, 6
+init_pgt_rodata_loop:
+	SHL	@3, @1, 3
+	XOR	@3, #000000-00
+	ST	@3, [kernel_pgt + @1]
+	ADD	@1, 1
+	CMP	@1, @2
+	JNZ	init_pgt_rodata_loop
+	LD	@2, [last_pg]
+	ADD	@2, 1
+init_pgt_data_loop:
+	SHL	@3, @1, 3
+	XOR	@3, #000000--0
+	ST	@3, [kernel_pgt + @1]
+	ADD	@1, 1
+	CMP	@1, @2
+	JNZ	init_pgt_data_loop
+	# Stack page.
+	MOV	@1, #00000---0
+	ST	@1, [kernel_pgt - 1]
+
+	# Initialize stack pointer.
+	MOV	@-4, #000------
+
+	# Enable paging.
+	MOV	@1, kernel_pgt
+	SHR	@1, 3
+	R2S	@PGTN, @1
+	MOV	@1, #---000000
+	R2S	@PSW, @1
+
+	# Start user programs.
+	MOV	@1, "Starting user programs..."
+	MOV	@2, -1
+	HVC	1
+
+	MOV	@1, desc_pc
+	J	@-1, spawn_process
+
+	MOV	@1, desc_valis
+	J	@-1, spawn_process
+
+	MOV	@-2, 9
+blue_spawn_loop:
+	MOV	@1, desc_blue
+	J	@-1, spawn_process
+	SUB	@-2, 1
+	JNZ	blue_spawn_loop
+
+	MOV	@-2, 3
+white_spawn_loop:
+	MOV	@1, desc_white
+	J	@-1, spawn_process
+	SUB	@-2, 1
+	JNZ	white_spawn_loop
+
+	MOV	@-2, 3
+drunk_spawn_loop:
+	MOV	@1, desc_drunk
+	J	@-1, spawn_process
+	SUB	@-2, 1
+	JNZ	drunk_spawn_loop
+
+	MOV	@1, desc_cyber
+	J	@-1, spawn_process
+
+	# Initialize board.
+	MOV	@1, "Initializing board..."
+	MOV	@2, -1
+	HVC	1
+
+	MOV	@-3, @0
+init_process_place_loop:
+	LD	@1, [processes + @-3]
+	CMP	@1, @0
+	JZ	init_process_place_cont
+init_process_place_retry:
+	RNG	@2
+	AND	@2, #00+++++++
+	LD	@3, [board + @2]
+	CMP	@3, @0
+	JG	init_process_place_retry
+	J	@-1, place_process
+init_process_place_cont:
+	ADD	@-3, 1
+	CMP	@-3, num_pids
+	JNZ	init_process_place_loop
+
+	# Start the game.
+	MOV	@1, "Entering game loop..."
+	MOV	@2, -1
+	HVC	1
+
+	MOV	@-3, @0
+loop:
+	LD	@-2, [processes + @-3]
+	ADD	@-3, 1
+	CMP	@-3, num_pids
+	JNZ	loop_no_wrap
+	MOV	@-3, @0
+loop_no_wrap:
+	CMP	@-2, @0
+	JZ	loop
+
+	# Add move points.
+	LD	@1, [@-2 + proc_move]
+	LD	@2, [@-2 + proc_speed]
+	ADD	@1, 1
+	ST	@1, [@-2 + proc_move]
+	CMP	@1, @2
+	JNZ	loop
+	ST	@0, [@-2 + proc_move]
+
+	# Action time.
+	ST	@0, [@-2 + proc_regs + 4]
+	MOV	@1, @-2
+	J	@-1, run_user
+	LD	@1, [@-2 + proc_regs + 4]
+	AND	@1, #0000000++
+	LD	@1, [action_jtable + @1]
+	J	@1
+
+action_move:
+	LD	@1, [@-2 + proc_regs + 5]
+	CMP	@1, @0
+	JZ	loop
+	J	@-1, drunk_confusion
+	LD	@2, [@-2 + proc_xy]
+	AND	@3, @2, #00000++++
+	AND	@4, @1, #00000000+
+	ADD	@3, @4
+	AND	@0, @3, #+++++0000
+	JNZ	move_bump_wall
+	SHR	@4, @2, 4
+	SHR	@1, 1
+	AND	@1, #00000000+
+	ADD	@4, @1
+	AND	@0, @4, #++++++000
+	JNZ	move_bump_wall
+	SHL	@4, 4
+	XOR	@3, @4
+	LD	@4, [board + @3]
+	CMP	@4, @0
+	JZ	move_ok
+	LD	@1, [@4 + proc_type]
+	CMP	@1, 0
+	JG	move_bump_other
+move_ok:
+	SUB	@-4, 1
+	ST	@3, [@-4]
+	LD	@1, [@-2 + proc_chain]
+	ST	@0, [@-2 + proc_chain]
+	ST	@1, [board + @2]
+	J	@-1, clear_square
+	LD	@2, [@-4]
+	ADD	@-4, 1
+	MOV	@1, @-2
+	J	@-1, place_process
+	J	loop
+
+move_bump_wall:
+	MOV	@1, notify_bump
+	LD	@2, [@-2 + proc_pid]
+	MOV	@3, @0
+	MOV	@4, @0
+	J	@-1, broadcast
+	J	loop
+move_bump_other:
+	MOV	@1, notify_bump
+	LD	@2, [@-2 + proc_pid]
+	LD	@3, [@4 + proc_pid]
+	MOV	@4, @0
+	J	@-1, broadcast
+	J	loop
+
+action_attack:
+	LD	@1, [@-2 + proc_regs + 5]
+	CMP	@1, @0
+	JZ	loop
+	J	@-1, drunk_confusion
+	LD	@2, [@-2 + proc_xy]
+	AND	@3, @2, #00000++++
+	AND	@4, @1, #00000000+
+	ADD	@3, @4
+	AND	@0, @3, #+++++0000
+	JNZ	move_bump_wall
+	SHR	@4, @2, 4
+	SHR	@1, 1
+	AND	@1, #00000000+
+	ADD	@4, @1
+	AND	@0, @4, #++++++000
+	JNZ	move_bump_wall
+	SHL	@4, 4
+	XOR	@3, @4
+	LD	@4, [board + @3]
+	CMP	@4, @0
+	JZ	attack_air
+	LD	@1, [@4 + proc_type]
+	CMP	@1, 0
+	JLE	attack_air
+	# Actual attack.
+	RNG	@1
+	CMP	@1, 0
+	JGE	attack_rnd_pos
+	NEG	@1, @1
+attack_rnd_pos:
+	LD	@2, [@-2 + proc_attack]
+	MOD	@1, @2
+	ADD	@1, @2
+	ADD	@1, 1
+	LD	@2, [@4 + proc_hp]
+	SUB	@2, @1
+	JLE	attack_croak
+	ST	@2, [@4 + proc_hp]
+	MOV	@1, notify_attack
+	LD	@3, [@4 + proc_pid]
+	MOV	@4, @2
+	LD	@2, [@-2 + proc_pid]
+	J	@-1, broadcast
+	J	loop
+
+attack_croak:
+	MOV	@1, notify_croak
+	LD	@2, [@-2 + proc_pid]
+	LD	@3, [@4 + proc_pid]
+	MOV	@-2, @4
+	J	@-1, broadcast
+	LD	@1, [@-2 + proc_type]
+	CMP	@1, type_pc
+	JZ	die
+	# Dump inventory.
+	LD	@1, [@-2 + proc_inv]
+	LD	@2, [@-2 + proc_xy]
+	ADD	@2, @2, board
+	J	@-1, chain_splice
+	# Clear from board.
+	LD	@2, [@-2 + proc_xy]
+	LD	@1, [@-2 + proc_chain]
+	ST	@1, [board + @2]
+	J	@-1, clear_square
+	LD	@1, [@-2 + proc_pid]
+	ST	@0, [processes + @1]
+	J	loop
+
+die:
+	MOV	@1, 0
+	HVC	0
+
+attack_air:
+	MOV	@1, notify_attack
+	LD	@2, [@-2 + proc_pid]
+	MOV	@3, @0
+	MOV	@4, @0
+	J	@-1, broadcast
+	J	loop
+
+action_pick:
+	ADD	@1, @-2, proc_chain
+	LD	@2, [@-2 + proc_regs + 5]
+	LD	@3, [@-2 + proc_regs + 6]
+	J	@-1, chain_get
+	CMP	@1, 0
+	JZ	loop
+	ADD	@1, @-2, proc_inv
+	LD	@2, [@-2 + proc_regs + 5]
+	LD	@3, [@-2 + proc_regs + 6]
+	J	@-1, chain_put
+	J	loop
+
+action_drop:
+	ADD	@1, @-2, proc_inv
+	LD	@2, [@-2 + proc_regs + 5]
+	LD	@3, [@-2 + proc_regs + 6]
+	J	@-1, chain_get
+	CMP	@1, 0
+	JZ	loop
+	ADD	@1, @-2, proc_chain
+	LD	@2, [@-2 + proc_regs + 5]
+	LD	@3, [@-2 + proc_regs + 6]
+	J	@-1, chain_put
+	J	loop
+
+action_use:
+	ADD	@1, @-2, proc_inv
+	LD	@2, [@-2 + proc_regs + 5]
+	MOV	@3, 1
+	CMP	@2, type_walizka
+	JZ	use_ok
+	CMP	@2, type_vodka
+	JZ	use_ok
+	CMP	@2, type_redbull
+	JZ	use_ok
+	MOV	@1, "Not a usable item."
+	MOV	@2, 2
+	HVC	1
+	J	loop
+use_ok:
+	J	@-1, chain_get
+	CMP	@1, 0
+	JZ	loop
+	LD	@2, [@-2 + proc_regs + 5]
+	CMP	@2, type_walizka
+	JZ	use_walizka
+	CMP	@2, type_vodka
+	JZ	use_vodka
+	LD	@2, [@-2 + proc_hp]
+	ADD	@2, 100
+	ST	@2, [@-2 + proc_hp]
+	J	use_notify
+use_walizka:
+	LD	@2, [@-2 + proc_drunk]
+	ADD	@2, 3
+	ST	@2, [@-2 + proc_drunk]
+	J	use_notify
+use_vodka:
+	LD	@2, [@-2 + proc_drunk]
+	ADD	@2, 1
+	ST	@2, [@-2 + proc_drunk]
+use_notify:
+	MOV	@1, notify_use
+	ST	@1, [@-2 + proc_regs + 4]
+	LD	@1, [@-2 + proc_hp]
+	ST	@1, [@-2 + proc_regs + 6]
+	LD	@1, [@-2 + proc_drunk]
+	ST	@1, [@-2 + proc_regs + 7]
+	MOV	@1, @-2
+	J	@-1, run_user
+	J	loop
+
+action_give:
+	LD	@1, [@-2 + proc_regs + 5]
+	CMP	@1, @0
+	JZ	loop
+	J	@-1, drunk_confusion
+	LD	@2, [@-2 + proc_xy]
+	AND	@3, @2, #00000++++
+	AND	@4, @1, #00000000+
+	ADD	@3, @4
+	AND	@0, @3, #+++++0000
+	JNZ	move_bump_wall
+	SHR	@4, @2, 4
+	SHR	@1, 1
+	AND	@1, #00000000+
+	ADD	@4, @1
+	AND	@0, @4, #++++++000
+	JNZ	move_bump_wall
+	SHL	@4, 4
+	XOR	@3, @4
+	LD	@4, [board + @3]
+	CMP	@4, @0
+	JZ	loop
+	LD	@1, [@4 + proc_type]
+	CMP	@1, 0
+	JLE	loop
+	# Actual give code.
+	SUB	@-4, 1
+	ST	@4, [@-4]
+	ADD	@1, @-2, proc_inv
+	LD	@2, [@-2 + proc_regs + 6]
+	LD	@3, [@-2 + proc_regs + 7]
+	J	@-1, chain_get
+	LD	@4, [@-4]
+	ADD	@-4, 1
+	CMP	@1, 0
+	JZ	loop
+	SUB	@-4, 1
+	ST	@4, [@-4]
+	ADD	@1, @4, proc_inv
+	LD	@2, [@-2 + proc_regs + 6]
+	LD	@3, [@-2 + proc_regs + 7]
+	J	@-1, chain_put
+	LD	@4, [@-4]
+	ADD	@-4, 1
+	# Notify.
+	MOV	@1, notify_give
+	ST	@1, [@4 + proc_regs + 4]
+	LD	@1, [@-2 + proc_pid]
+	ST	@1, [@4 + proc_regs + 5]
+	LD	@1, [@-2 + proc_regs + 6]
+	ST	@1, [@4 + proc_regs + 6]
+	LD	@1, [@-2 + proc_regs + 7]
+	ST	@1, [@4 + proc_regs + 7]
+	MOV	@1, @4
+	J	@-1, run_user
+	J	loop
+
+action_unknown:
+	MOV	@1, "Unknown action "
+	J	@-1, log_str
+	LD	@1, [@-2 + proc_regs + 4]
+	J	@-1, log_raw
+	MOV	@1, 1
+	J	@-1, log_finish
+	J	loop
+
+drunk_confusion:
+	LD	@2, [@-2 + proc_drunk]
+	RNG	@3
+	AND	@3, 1
+	ADD	@3, 1
+	CMP	@3, @2
+	JGE	@-1
+	RNG	@2
+	AND	@2, #0000000++
+	JZ	@-1
+	MOV	@1, @2
+	J	@-1
+
+place_process:
+	ST	@2, [@1 + proc_xy]
+	LD	@3, [board + @2]
+	ST	@3, [@1 + proc_chain]
+	ST	@1, [board + @2]
+
+	LD	@3, [@1 + proc_type]
+	LD	@4, [@1 + proc_pid]
+	MOV	@1, notify_square
+	J	broadcast
+
+clear_square:
+	MOV	@1, notify_square
+	MOV	@3, @0
+	MOV	@4, @0
+	LD	@3, [board + @2]
+	CMP	@3, 0
+	JZ	broadcast
+	LD	@3, [@3 + proc_type]
+	J	broadcast
+
+
+# in: @1 ptr to chain, @2 type, @3 count
+# out: @1 1 success, 0 fail
+chain_get:
+	LD	@4, [@1]
+	CMP	@4, 0
+	JZ	chain_get_not_found
+	LD	@4, [@4 + item_type]
+	CMP	@4, @2
+	JZ	chain_get_found
+	LD	@1, [@1]
+	ADD	@1, item_chain
+	J	chain_get
+
+chain_get_found:
+	LD	@4, [@1]
+	LD	@2, [@4 + item_count]
+	SUB	@2, @3
+	JL	chain_get_too_few
+	JZ	chain_get_remove
+	ST	@2, [@4 + item_count]
+	MOV	@1, 1
+	J	@-1
+
+chain_get_remove:
+	LD	@2, [@4 + item_chain]
+	ST	@2, [@1]
+	MOV	@1, 1
+	J	@-1
+
+chain_get_not_found:
+	SUB	@-4, 2
+	ST	@-1, [@-4 + 0]
+	ST	@2, [@-4 + 1]
+	MOV	@1, "Item type "
+	J	@-1, log_str
+	LD	@1, [@-4 + 1]
+	J	@-1, log_int
+	MOV	@1, " not found on chain"
+	J	@-1, log_str
+	MOV	@1, 2
+	J	@-1, log_finish
+	LD	@-1, [@-4 + 0]
+	ADD	@-4, 2
+	MOV	@1, 0
+	J	@-1
+
+chain_get_too_few:
+	SUB	@-4, 4
+	ST	@-1, [@-4 + 0]
+	LD	@2, [@4 + item_type]
+	ST	@2, [@-4 + 1]
+	LD	@2, [@4 + item_count]
+	ST	@2, [@-4 + 2]
+	ST	@3, [@-4 + 3]
+	MOV	@1, "Not enough of item type "
+	J	@-1, log_str
+	LD	@1, [@-4 + 1]
+	J	@-1, log_int
+	MOV	@1, ": have "
+	J	@-1, log_str
+	LD	@1, [@-4 + 2]
+	J	@-1, log_int
+	MOV	@1, ", requested "
+	J	@-1, log_str
+	LD	@1, [@-4 + 3]
+	J	@-1, log_int
+	MOV	@1, 2
+	J	@-1, log_finish
+	LD	@-1, [@-4 + 0]
+	ADD	@-4, 4
+	MOV	@1, 0
+	J	@-1
+
+
+# in: @1 ptr to chain, @2 type, @3 count
+chain_put:
+	LD	@4, [@1]
+	CMP	@4, 0
+	JZ	chain_put_end
+	LD	@4, [@4 + item_type]
+	CMP	@4, @2
+	JZ	chain_put_found
+	LD	@1, [@1]
+	ADD	@1, item_chain
+	J	chain_put
+
+chain_put_found:
+	LD	@4, [@1]
+	LD	@2, [@4 + item_count]
+	ADD	@2, @3
+	ST	@2, [@4 + item_count]
+	J	@-1
+
+chain_put_end:
+	SUB	@-4, 4
+	ST	@-1, [@-4 + 0]
+	ST	@1, [@-4 + 1]
+	ST	@2, [@-4 + 2]
+	ST	@3, [@-4 + 3]
+	MOV	@1, item_size
+	J	@-1, malloc
+	LD	@4, [@-4 + 1]
+	LD	@2, [@-4 + 2]
+	LD	@3, [@-4 + 3]
+	ST	@1, [@4]
+	ST	@2, [@1 + item_type]
+	ST	@3, [@1 + item_count]
+	ST	@0, [@1 + item_chain]
+	LD	@-1, [@-4 + 0]
+	ADD	@-4, 4
+	J	@-1
+
+
+# in: @1 src chain, @2 ptr to dst chain
+chain_splice:
+	SUB	@-4, 3
+	ST	@-1, [@-4 + 0]
+	ST	@1, [@-4 + 1]
+	ST	@2, [@-4 + 2]
+chain_splice_loop:
+	LD	@1, [@-4 + 1]
+	CMP	@1, 0
+	JZ	chain_splice_end
+	LD	@4, [@1 + item_chain]
+	ST	@4, [@-4 + 1]
+	LD	@2, [@1 + item_type]
+	LD	@3, [@1 + item_count]
+	LD	@1, [@-4 + 2]
+	J	@-1, chain_put
+	J	chain_splice_loop
+chain_splice_end:
+	LD	@-1, [@-4 + 0]
+	ADD	@-4, 3
+	J	@-1
+	
+
+broadcast:
+	SUB	@-4, 6
+	ST	@-1, [@-4 + 0]
+	ST	@-2, [@-4 + 1]
+	ST	@1, [@-4 + 2]
+	ST	@2, [@-4 + 3]
+	ST	@3, [@-4 + 4]
+	ST	@4, [@-4 + 5]
+	MOV	@-2, @0
+broadcast_loop:
+	LD	@1, [processes + @-2]
+	CMP	@1, @0
+	JZ	broadcast_cont
+	LD	@2, [@-4 + 2]
+	ST	@2, [@1 + proc_regs + 4]
+	LD	@2, [@-4 + 3]
+	ST	@2, [@1 + proc_regs + 5]
+	LD	@2, [@-4 + 4]
+	ST	@2, [@1 + proc_regs + 6]
+	LD	@2, [@-4 + 5]
+	ST	@2, [@1 + proc_regs + 7]
+	J	@-1, run_user
+broadcast_cont:
+	ADD	@-2, 1
+	CMP	@-2, num_pids
+	JNZ	broadcast_loop
+	LD	@-1, [@-4 + 0]
+	LD	@-2, [@-4 + 1]
+	ADD	@-4, 6
+	J	@-1
+
+syscall_handler:
+	R2S	@SCRP, @1
+	MOV	@1, #---000+00
+	R2S	@PSW, @1
+	S2R	@1, @SCRZ
+	ST	@-4, [@1 + proc_regs + 0]
+	ST	@-3, [@1 + proc_regs + 1]
+	ST	@-2, [@1 + proc_regs + 2]
+	ST	@-1, [@1 + proc_regs + 3]
+	ST	@2, [@1 + proc_regs + 5]
+	ST	@3, [@1 + proc_regs + 6]
+	ST	@4, [@1 + proc_regs + 7]
+	S2R	@-4, @SCRN
+	S2R	@2, @SCRP
+	ST	@2, [@1 + proc_regs + 4]
+	S2R	@2, @EPSW
+	ST	@2, [@1 + proc_psw]
+	S2R	@2, @EPC
+	ADD	@2, 1
+	ST	@2, [@1 + proc_pc]
+	SETF	@TL, 0
+
+	S2R	@2, @EDATA
+	AND	@2, #0000000++
+	LD	@2, [syscall_jtable + @2]
+	J	@2
+
+syscall_yield:
+	R2S	@SCRZ, @0
+	LD	@-3, [@-4 + 0]
+	LD	@-2, [@-4 + 1]
+	LD	@-1, [@-4 + 2]
+	ADD	@-4, 3
+	J	@-1
+
+run_user:
+	SUB	@-4, 3
+	ST	@-3, [@-4 + 0]
+	ST	@-2, [@-4 + 1]
+	ST	@-1, [@-4 + 2]
+	R2S	@SCRZ, @1
+	R2S	@SCRN, @-4
+
+syscall_exit:
+	S2R	@1, @SCRZ
+	LD	@2, [@1 + proc_pgt_reg]
+	R2S	@PGTP, @2
+	LD	@2, [@1 + proc_pc]
+	R2S	@EPC, @2
+	LD	@2, [@1 + proc_psw]
+	R2S	@EPSW, @2
+	LD	@2, [@1 + proc_regs + 4]
+	R2S	@SCRP, @2
+
+	LD	@-4, [@1 + proc_regs + 0]
+	LD	@-3, [@1 + proc_regs + 1]
+	LD	@-2, [@1 + proc_regs + 2]
+	LD	@-1, [@1 + proc_regs + 3]
+	LD	@2, [@1 + proc_regs + 5]
+	LD	@3, [@1 + proc_regs + 6]
+	LD	@4, [@1 + proc_regs + 7]
+	S2R	@1, @SCRP
+
+	ERET
+
+syscall_iterate_floor:
+	LD	@2, [@1 + proc_chain]
+	ST	@2, [@1 + proc_iterator]
+	J	syscall_exit
+
+syscall_iterate_inv:
+	LD	@2, [@1 + proc_inv]
+	ST	@2, [@1 + proc_iterator]
+	J	syscall_exit
+
+syscall_iterate_next:
+	LD	@2, [@1 + proc_iterator]
+	CMP	@2, 0
+	JZ	iterate_done
+	LD	@3, [@2 + item_type]
+	ST	@3, [@1 + proc_regs + 4]
+	LD	@3, [@2 + item_count]
+	ST	@3, [@1 + proc_regs + 5]
+	LD	@3, [@2 + item_chain]
+	ST	@3, [@1 + proc_iterator]
+	J	syscall_exit
+
+iterate_done:
+	ST	@0, [@1 + proc_regs + 4]
+	ST	@0, [@1 + proc_regs + 5]
+	J	syscall_exit
+
+syscall_look:
+	LD	@2, [@1 + proc_regs + 4]
+	AND	@2, #00+++++++
+	LD	@4, [board + @2]
+	MOV	@2, @0
+	MOV	@3, @0
+	CMP	@4, @0
+	JZ	syscall_look_done
+	LD	@2, [@4 + proc_type]
+	CMP	@2, @0
+	JL	syscall_look_done
+	LD	@3, [@4 + proc_pid]
+syscall_look_done:
+	ST	@2, [@1 + proc_regs + 4]
+	ST	@3, [@1 + proc_regs + 5]
+	J	syscall_exit
+
+syscall_log:
+	LD	@2, [@1 + proc_regs + 4]
+	MOV	@3, usr_log_buf
+	SETF	@RM, 1
+	SETF	@RP, 1
+syscall_log_loop:
+	LD	@4, [@2++]
+	ST	@4, [@3++]
+	CMP	@4, @0
+	JZ	syscall_log_loop_end
+	CMP	@3, usr_log_buf + 242
+	JNZ	syscall_log_loop
+syscall_log_loop_end:
+	ST	@0, [@3++]
+	SETF	@RP, -1
+	SETF	@RM, 0
+
+	S2R	@1, @SCRZ
+	LD	@1, [@1 + proc_name]
+	J	@-1, log_str
+	MOV	@1, "/"
+	J	@-1, log_str
+	S2R	@1, @SCRZ
+	LD	@1, [@1 + proc_pid]
+	J	@-1, log_int
+	MOV	@1, ": "
+	J	@-1, log_str
+	MOV	@1, usr_log_buf
+	J	@-1, log_str
+	S2R	@1, @SCRZ
+	LD	@1, [@1 + proc_regs + 5]
+	J	@-1, log_finish
+	J	syscall_exit
+
+syscall_pidinfo:
+	LD	@2, [@1 + proc_regs + 4]
+	CMP	@2, @0
+	JL	syscall_pidinfo_error
+	CMP	@2, num_pids
+	JGE	syscall_pidinfo_error
+	LD	@2, [processes + @2]
+	CMP	@2, @0
+	JZ	syscall_pidinfo_error
+	LD	@3, [@2 + proc_xy]
+	ST	@3, [@1 + proc_regs + 4]
+	LD	@3, [@2 + proc_type]
+	ST	@3, [@1 + proc_regs + 5]
+	J	syscall_exit
+
+syscall_pidinfo_error:
+	ST	@0, [@1 + proc_regs + 4]
+	ST	@0, [@1 + proc_regs + 5]
+	ST	@0, [@1 + proc_regs + 6]
+	J	syscall_exit
+
+syscall_quit:
+	S2R	@1, @SCRZ
+	LD	@1, [@1 + proc_regs + 4]
+	HVC	0
+	
+
+syscall_flag:
+	LD	@2, [@1 + proc_type]
+	MOV	@1, "flag1.txt"
+	CMP	@2, type_pc
+	JZ	do_flag
+	MOV	@1, "flag2.txt"
+	CMP	@2, type_valis
+	JNZ	flag_nope
+do_flag:
+	HVC	4
+	CMP	@1, @0
+	JL	flag_fail
+	S2R	@4, @SCRZ
+	MOV	@2, @1
+	MOV	@3, 0
+	LD	@1, [@4 + proc_regs + 4]
+	ST	@2, [@4 + proc_regs + 4]
+	SETF	@WP, 1
+	SETF	@WM, 1
+	HVC	3
+	SETF	@WP, -1
+	SETF	@WM, 0
+	CMP	@1, 0
+	JL	flag_fail
+	J	syscall_exit
+flag_fail:
+	MOV	@1, "Flag read failed!"
+	MOV	@2, 2
+	HVC	1
+flag_nope:
+	S2R	@1, @SCRZ
+	ST	@0, [@1 + proc_regs + 4]
+	J	syscall_exit
+
+
+syscall_unknown:
+	MOV	@1, "Unknown syscall "
+	J	@-1, log_str
+	S2R	@1, @EDATA
+	J	@-1, log_raw
+	MOV	@1, 1
+	J	@-1, log_finish
+	J	syscall_exit
+
+
+df_handler:
+	ST	@-4, [exc_regs]
+	ST	@-3, [exc_regs+1]
+	ST	@-2, [exc_regs+2]
+	ST	@-1, [exc_regs+3]
+	ST	@1, [exc_regs+4]
+	ST	@2, [exc_regs+5]
+	ST	@3, [exc_regs+6]
+	ST	@4, [exc_regs+7]
+	J	@-1, log_clear
+	MOV	@1, "DOUBLE FAULT "
+	J	@-1, log_str
+	S2R	@1, @EDATA
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+exc_common:
+
+	S2R	@1, @SCRZ
+	CMP	@1, @0
+	JZ	exc_no_process
+	MOV	@1, "PROCESS: "
+	J	@-1, log_str
+	S2R	@1, @SCRZ
+	LD	@1, [@1 + proc_name]
+	J	@-1, log_str
+	MOV	@1, "/"
+	J	@-1, log_str
+	S2R	@1, @SCRZ
+	LD	@1, [@1 + proc_pid]
+	J	@-1, log_int
+	MOV	@1, 2
+	J	@-1, log_finish
+
+exc_no_process:
+	MOV	@1, "PC  = "
+	J	@-1, log_str
+	S2R	@1, @EPC
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "PSW = "
+	J	@-1, log_str
+	S2R	@1, @EPSW
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "R-4 = "
+	J	@-1, log_str
+	LD	@1, [exc_regs]
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "R-3 = "
+	J	@-1, log_str
+	LD	@1, [exc_regs+1]
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "R-2 = "
+	J	@-1, log_str
+	LD	@1, [exc_regs+2]
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "R-1 = "
+	J	@-1, log_str
+	LD	@1, [exc_regs+3]
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "R1  = "
+	J	@-1, log_str
+	LD	@1, [exc_regs+4]
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "R2  = "
+	J	@-1, log_str
+	LD	@1, [exc_regs+5]
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "R3  = "
+	J	@-1, log_str
+	LD	@1, [exc_regs+6]
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, "R4  = "
+	J	@-1, log_str
+	LD	@1, [exc_regs+7]
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	MOV	@1, 2
+	HVC	0
+
+priverr_handler:
+	ST	@-4, [exc_regs]
+	ST	@-3, [exc_regs+1]
+	ST	@-2, [exc_regs+2]
+	ST	@-1, [exc_regs+3]
+	ST	@1, [exc_regs+4]
+	ST	@2, [exc_regs+5]
+	ST	@3, [exc_regs+6]
+	ST	@4, [exc_regs+7]
+	MOV	@1, #---000+00
+	R2S	@PSW, @1
+	J	@-1, log_clear
+	MOV	@1, "PRIVILEGED INSTRUCTION "
+	J	@-1, log_str
+	S2R	@1, @EDATA
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	J	exc_common
+
+illegal_handler:
+	ST	@-4, [exc_regs]
+	ST	@-3, [exc_regs+1]
+	ST	@-2, [exc_regs+2]
+	ST	@-1, [exc_regs+3]
+	ST	@1, [exc_regs+4]
+	ST	@2, [exc_regs+5]
+	ST	@3, [exc_regs+6]
+	ST	@4, [exc_regs+7]
+	MOV	@1, #---000+00
+	R2S	@PSW, @1
+	J	@-1, log_clear
+	MOV	@1, "ILLEGAL INSTRUCTION "
+	J	@-1, log_str
+	S2R	@1, @EDATA
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	J	exc_common
+
+pf_x_handler:
+	ST	@-4, [exc_regs]
+	ST	@-3, [exc_regs+1]
+	ST	@-2, [exc_regs+2]
+	ST	@-1, [exc_regs+3]
+	ST	@1, [exc_regs+4]
+	ST	@2, [exc_regs+5]
+	ST	@3, [exc_regs+6]
+	ST	@4, [exc_regs+7]
+	MOV	@1, #---000+00
+	R2S	@PSW, @1
+	J	@-1, log_clear
+	MOV	@1, "PAGE FAULT: EXECUTE AT "
+	J	@-1, log_str
+	S2R	@1, @EDATA
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	J	exc_common
+
+pf_w_handler:
+	ST	@-4, [exc_regs]
+	ST	@-3, [exc_regs+1]
+	ST	@-2, [exc_regs+2]
+	ST	@-1, [exc_regs+3]
+	ST	@1, [exc_regs+4]
+	ST	@2, [exc_regs+5]
+	ST	@3, [exc_regs+6]
+	ST	@4, [exc_regs+7]
+	MOV	@1, #---000+00
+	R2S	@PSW, @1
+	J	@-1, log_clear
+	MOV	@1, "PAGE FAULT: STORE AT "
+	J	@-1, log_str
+	S2R	@1, @EDATA
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	J	exc_common
+
+pf_r_handler:
+	ST	@-4, [exc_regs]
+	ST	@-3, [exc_regs+1]
+	ST	@-2, [exc_regs+2]
+	ST	@-1, [exc_regs+3]
+	ST	@1, [exc_regs+4]
+	ST	@2, [exc_regs+5]
+	ST	@3, [exc_regs+6]
+	ST	@4, [exc_regs+7]
+	MOV	@1, #---000+00
+	R2S	@PSW, @1
+	J	@-1, log_clear
+	MOV	@1, "PAGE FAULT: LOAD AT "
+	J	@-1, log_str
+	S2R	@1, @EDATA
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	J	exc_common
+
+div0_handler:
+	ST	@-4, [exc_regs]
+	ST	@-3, [exc_regs+1]
+	ST	@-2, [exc_regs+2]
+	ST	@-1, [exc_regs+3]
+	ST	@1, [exc_regs+4]
+	ST	@2, [exc_regs+5]
+	ST	@3, [exc_regs+6]
+	ST	@4, [exc_regs+7]
+	MOV	@1, #---000+00
+	R2S	@PSW, @1
+	J	@-1, log_clear
+	MOV	@1, "DIVISION BY 0 "
+	J	@-1, log_str
+	S2R	@1, @EDATA
+	J	@-1, log_raw
+	MOV	@1, 2
+	J	@-1, log_finish
+	J	exc_common
+
+log_int:
+	LD	@2, [log_pos]
+	ADD	@2, log_buf
+	CMP	@1, @0
+	JGE	log_int_pos
+	JZ	log_int_zero
+	MOV	@3, '-'
+	ST	@3, [@2++]
+	NEG	@1, @1
+log_int_pos:
+	MOV	@3, int_log_buf + 4
+log_int_loop1:
+	MOD	@4, @1, 10
+	DIV	@1, @1, 10
+	ADD	@4, '0'
+	ST	@4, [@3--]
+	CMP	@1, @0
+	JNZ	log_int_loop1
+	ADD	@3, 1
+log_int_loop2:
+	LD	@1, [@3++]
+	CMP	@1, @0
+	JZ	log_int_end
+	ST	@1, [@2++]
+	J	log_int_loop2
+
+log_int_zero:
+	MOV	@3, '0'
+	ST	@3, [@2++]
+log_int_end:
+	SUB	@2, log_buf
+	ST	@2, [log_pos]
+	J	@-1
+
+log_raw:
+	LD	@2, [log_pos]
+	ADD	@2, log_buf
+	MOV	@4, 8
+log_raw_loop:
+	SHR	@3, @1, @4
+	AND	@3, 1
+	LD	@3, [tdigits+@3]
+	ST	@3, [@2++]
+	SUB	@4, 1
+	JGE	log_raw_loop
+	SUB	@2, log_buf
+	ST	@2, [log_pos]
+	J	@-1
+
+log_str:
+	LD	@2, [log_pos]
+	ADD	@2, log_buf
+log_str_loop:
+	LD	@3, [@1++]
+	ST	@3, [@2++]
+	CMP	@3, @0
+	JNZ	log_str_loop
+	SUB	@2, log_buf+1
+	ST	@2, [log_pos]
+	J	@-1
+
+log_finish:
+	MOV	@2, @1
+	LD	@1, [log_pos]
+	ST	@0, [log_buf + @1]
+	MOV	@1, log_buf
+	HVC	1
+log_clear:
+	ST	@0, [log_pos]
+	J	@-1
+
+pgalloc:
+	LD	@1, [last_pg]
+	ADD	@1, 1
+	JC	pgalloc_fail
+	ST	@1, [last_pg]
+	J	@-1
+pgalloc_fail:
+	MOV	@1, "PHYSICAL MEMORY EXHAUSTED :("
+	MOV	@2, 3
+	HVC	1
+	MOV	@1, 2
+	HVC	0
+
+malloc:
+	SUB	@-4, 4
+	ST	@-1, [@-4 + 0]
+	ST	@-2, [@-4 + 1]
+	ST	@-3, [@-4 + 2]
+	LD	@2, [heap_end]
+	ST	@2, [@-4 + 3]
+	ADD	@3, @2, @1
+	JC	malloc_fail
+	ST	@3, [heap_end]
+	SUB	@2, 1
+	SHR	@-3, @2, 6
+	SUB	@3, 1
+	SHR	@-2, @3, 6
+malloc_loop:
+	CMP	@-3, @-2
+	JZ	malloc_end
+	ADD	@-3, 1
+	J	@-1, pgalloc
+	SHL	@1, 3
+	XOR	@1, #000000--0
+	ST	@1, [kernel_pgt + @-3]
+	J	malloc_loop
+malloc_end:
+	LD	@-1, [@-4 + 0]
+	LD	@-2, [@-4 + 1]
+	LD	@-3, [@-4 + 2]
+	LD	@1, [@-4 + 3]
+	ADD	@-4, 4
+	J	@-1
+malloc_fail:
+	MOV	@1, "MALLOC MEMORY EXHAUSTED :("
+	MOV	@2, 3
+	HVC	1
+	MOV	@1, 2
+	HVC	0
+
+pgtalloc:
+	SUB	@-4, 1
+	ST	@-1, [@-4 + 0]
+
+	LD	@1, [heap_end]
+	SUB	@1, 1
+	AND	@1, #++++++000
+	XOR	@1, #000000+++
+	ADD	@1, 1
+	ST	@1, [heap_end]
+	
+	MOV	@1, 27
+	J	@-1, malloc
+	ADD	@1, #000000+++
+	SHR	@2, @1, 6
+	LD	@2, [kernel_pgt + @2]
+	AND	@2, #++++++000
+	SHR	@3, @1, 3
+	AND	@3, #000000+++
+	XOR	@2, @3
+
+	LD	@-1, [@-4 + 0]
+	ADD	@-4, 1
+	J	@-1
+
+# IN: pdesc struct ptr
+# OUT: proc struct ptr
+spawn_process:
+	SUB	@-4, 4
+	ST	@-1, [@-4 + 0]
+	ST	@-2, [@-4 + 1]
+	ST	@-3, [@-4 + 2]
+	MOV	@-3, @1
+
+	MOV	@1, proc_size
+	J	@-1, malloc
+	MOV	@-2, @1
+
+	LD	@2, [@-3 + pdesc_name]
+	ST	@2, [@-2 + proc_name]
+	LD	@2, [@-3 + pdesc_type]
+	ST	@2, [@-2 + proc_type]
+	LD	@2, [@-3 + pdesc_hp]
+	ST	@2, [@-2 + proc_hp]
+	LD	@2, [@-3 + pdesc_drunk]
+	ST	@2, [@-2 + proc_drunk]
+	LD	@2, [@-3 + pdesc_attack]
+	ST	@2, [@-2 + proc_attack]
+	LD	@2, [@-3 + pdesc_speed]
+	ST	@2, [@-2 + proc_speed]
+	ST	@0, [@-2 + proc_inv]
+
+	LD	@2, [@-3 + pdesc_item]
+	CMP	@2, 0
+	JZ	spawn_no_item
+	ADD	@1, @-2, proc_inv
+	MOV	@3, 1
+	J	@-1, chain_put
+spawn_no_item:
+
+	LD	@1, [last_pid]
+	ADD	@1, 1
+	CMP	@1, num_pids
+	JZ	pid_fail
+	ST	@1, [last_pid]
+	ST	@-2, [processes + @1]
+	ST	@1, [@-2 + proc_pid]
+	# Will be placed later.
+	ST	@0, [@-2 + proc_chain]
+	ST	@0, [@-2 + proc_xy]
+	ST	@0, [@-2 + proc_move]
+	ST	@0, [@-2 + proc_pc]
+	ST	@0, [@-2 + proc_regs + 0]
+	ST	@0, [@-2 + proc_regs + 1]
+	ST	@0, [@-2 + proc_regs + 2]
+	ST	@1, [@-2 + proc_regs + 3]
+	ST	@0, [@-2 + proc_regs + 4]
+	ST	@0, [@-2 + proc_regs + 5]
+	ST	@0, [@-2 + proc_regs + 6]
+	ST	@0, [@-2 + proc_regs + 7]
+
+	MOV	@1, #++++++000
+	LD	@2, [@-2 + proc_type]
+	CMP	@2, type_pc
+	JNZ	spawn_write_psw
+	MOV	@1, #+++---000
+spawn_write_psw:
+	ST	@1, [@-2 + proc_psw]
+
+	J	@-1, pgtalloc
+	ST	@1, [@-2 + proc_pgt_ptr]
+	ST	@2, [@-2 + proc_pgt_reg]
+	R2S	@PGTP, @2
+
+	LD	@1, [@-2 + proc_name]
+	HVC	2
+	CMP	@1, @0
+	JL	spawn_read_fail
+	ST	@1, [@-4 + 3]
+	SUB	@1, 1
+	SHR	@-3, @1, 6
+spawn_map_loop:
+	J	@-1, pgalloc
+	LD	@2, [@-2 + proc_pgt_ptr]
+	SHL	@1, @1, 3
+	XOR	@1, #000000+++
+	ST	@1, [@2 + @-3]
+	SUB	@-3, 1
+	JGE	spawn_map_loop
+
+	MOV	@1, @0
+	LD	@2, [@-4 + 3]
+	MOV	@3, @0
+	SETF	@WP, 1
+	SETF	@WM, 1
+	HVC	3
+	SETF	@WP, -1
+	SETF	@WM, 0
+	CMP	@1, @0
+	JL	spawn_read_fail
+
+	MOV	@1, @-2
+	J	@-1, run_user
+
+	MOV	@1, "Spawned "
+	J	@-1, log_str
+	LD	@1, [@-2 + proc_name]
+	J	@-1, log_str
+	MOV	@1, "/"
+	J	@-1, log_str
+	LD	@1, [@-2 + proc_pid]
+	J	@-1, log_int
+	MOV	@1, -1
+	J	@-1, log_finish
+
+	MOV	@1, @-2
+	LD	@-1, [@-4 + 0]
+	LD	@-2, [@-4 + 1]
+	LD	@-3, [@-4 + 2]
+	ADD	@-4, 4
+	J	@-1
+
+pid_fail:
+	MOV	@1, "PIDS EXHAUSTED :("
+	MOV	@2, 3
+	HVC	1
+	MOV	@1, 2
+	HVC	0
+
+spawn_read_fail:
+	MOV	@1, "Failed to open "
+	J	@-1, log_str
+	LD	@1, [@-2 + proc_name]
+	J	@-1, log_str
+	MOV	@1, 3
+	J	@-1, log_finish
+	MOV	@1, 2
+	HVC	0
+
+PGALIGN
+rodata_start:
+
+		BYTE '-'
+tdigits:	BYTE '0'
+		BYTE '+'
+
+desc_pc:	BYTE "pc.nb"
+		BYTE type_pc
+		BYTE 100
+		BYTE 0
+		BYTE 20
+		BYTE 3
+		BYTE 0
+
+desc_valis:	BYTE "valis.nb"
+		BYTE type_valis
+		BYTE 100
+		BYTE 0
+		BYTE 20
+		BYTE 4
+		BYTE type_walizka
+
+desc_blue:	BYTE "enemy.nb"
+		BYTE type_blue
+		BYTE 200
+		BYTE 0
+		BYTE 20
+		BYTE 4
+		BYTE type_redbull
+
+desc_white:	BYTE "enemy.nb"
+		BYTE type_white
+		BYTE 200
+		BYTE 0
+		BYTE 20
+		BYTE 4
+		BYTE type_vodka
+
+desc_drunk:	BYTE "enemy.nb"
+		BYTE type_drunk
+		BYTE 200
+		BYTE 2
+		BYTE 20
+		BYTE 4
+		BYTE type_empty
+
+desc_cyber:	BYTE "enemy.nb"
+		BYTE type_cyber
+		BYTE 9001
+		BYTE 0
+		BYTE 30
+		BYTE 1
+		BYTE type_mcguffin
+
+		BYTE syscall_iterate_floor
+		BYTE syscall_iterate_next
+		BYTE syscall_iterate_inv
+		BYTE syscall_look
+syscall_jtable:	BYTE syscall_yield
+		BYTE syscall_log
+		BYTE syscall_pidinfo
+		BYTE syscall_flag
+		BYTE syscall_quit
+
+		BYTE action_unknown
+		BYTE action_unknown
+		BYTE action_unknown
+		BYTE action_give
+action_jtable:	BYTE action_move
+		BYTE action_attack
+		BYTE action_drop
+		BYTE action_pick
+		BYTE action_use
+
+STRINGPOOL
+
+
+PGALIGN
+
+data_start:
+
+		BYTES 1093
+board:		BYTES 1094
+
+		BYTES 13
+kernel_pgt:	BYTES 14
+
+
+heap_end:	BYTE 0
+last_pg:	BYTE 0
+last_pid:	BYTE 0
+
+# XXX tweak size
+usr_log_buf:	BYTES 243
+
+int_log_buf:	BYTES 6
+
+log_pos:	BYTE 0
+log_buf:	BYTES 243
+
+exc_regs:	BYTES 8
+
+processes:	BYTES num_pids
+
+
+data_end:

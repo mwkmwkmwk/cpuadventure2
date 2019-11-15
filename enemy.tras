@@ -1,0 +1,139 @@
+start:
+	MOV	@-2, 0
+loop:
+	SVC	0
+	CMP	@1, -2
+	JZ	notify_croak
+	CMP	@1, -1
+	JZ	notify_attack
+	CMP	@1, 0
+	JZ	pick_action
+	CMP	@1, 1
+	JZ	notify_square
+	CMP	@1, 2
+	JZ	notify_give
+	J	loop
+
+notify_attack:
+	# attack notification
+	CMP	@3, @-1
+	JNZ	loop
+	CMP	@2, @-2
+	JZ	loop
+	# new enemy
+	MOV	@-2, @2
+	MOV	@1, @2
+	SVC	2
+	AND	@2, @1, #00000++++
+	ST	@2, [en_x]
+	SHR	@2, @1, 4
+	ST	@2, [en_y]
+	MOV	@1, "\"ROAR!\""
+	MOV	@2, 1
+	SVC	1
+	J	loop
+
+notify_croak:
+	CMP	@3, @-1
+	JZ	croak_self
+	CMP	@3, @-2
+	JNZ	loop
+	MOV	@-2, 0
+	J	loop
+
+notify_give:
+	MOV	@1, "\"Grar?\""
+	MOV	@2, 0
+	SVC	1
+	J	loop
+
+croak_self:
+	MOV	@1, "\"AAARGH!\""
+	MOV	@2, 3
+	SVC	1
+	J	loop
+
+notify_square:
+	CMP	@3, 0
+	JLE	loop
+	CMP	@4, @-2
+	JZ	track_enemy
+	CMP	@4, @-1
+	JNZ	loop
+track_me:
+	AND	@1, @2, #00000++++
+	ST	@1, [my_x]
+	SHR	@2, 4
+	ST	@2, [my_y]
+	J	loop
+track_enemy:
+	AND	@1, @2, #00000++++
+	ST	@1, [en_x]
+	SHR	@2, 4
+	ST	@2, [en_y]
+	J	loop
+
+pick_action:
+	CMP	@-2, 0
+	JZ	pick_action_idle
+pick_action_attack:
+	MOV	@4, 1
+	LD	@1, [en_x]
+	LD	@2, [my_x]
+	CMP	@1, @2
+	GETF	@-4, @SF
+	LD	@1, [en_y]
+	LD	@2, [my_y]
+	CMP	@1, @2
+	GETF	@-3, @SF
+	LD	@1, [my_x]
+	ADD	@1, @-4
+	LD	@2, [en_x]
+	CMP	@1, @2
+	JNZ	pick_action_move
+	LD	@1, [my_y]
+	ADD	@1, @-3
+	LD	@2, [en_y]
+	CMP	@1, @2
+	JNZ	pick_action_move
+	MOV	@1, 1
+	J	pick_action_dir
+
+pick_action_idle:
+	RNG	@-4
+	RNG	@-3
+	AND	@-4, 1
+	AND	@-3, 1
+	MOV	@4, 0
+pick_action_move:
+	LD	@1, [my_x]
+	ADD	@1, @-4
+	AND	@0, @1, #+++++0000
+	JNZ	pick_action_null
+	LD	@2, [my_y]
+	ADD	@2, @-3
+	AND	@0, @2, #++++++000
+	JNZ	pick_action_null
+	SHL	@2, 4
+	XOR	@1, @2
+	SVC	-1
+	CMP	@1, 0
+	JG	pick_action_null
+	MOV	@1, 0
+pick_action_dir:
+	SHL	@2, @-3, 1
+	XOR	@2, @-4
+	J	loop
+pick_action_null:
+	CMP	@4, 1
+	JZ	pick_action_idle
+	MOV	@1, 0
+	MOV	@2, 0
+	J	loop
+
+STRINGPOOL
+
+my_x:	BYTE	0
+my_y:	BYTE	0
+en_x:	BYTE	0
+en_y:	BYTE	0
