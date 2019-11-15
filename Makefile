@@ -4,4 +4,4 @@ emu: emu.c
 	gcc -O2 emu.c -o emu
 
 %.nb: %.tras tras.py
-	python tras.py $< $@
+	python3 tras.py $< $@

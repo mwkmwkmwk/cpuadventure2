@@ -1,0 +1,24 @@
+ORG -243
+BYTE	start
+start:
+
+MOV	@1, #000------
+SVC	3
+MOV	@1, #000------
+MOV	@2, 3
+SVC	1
+
+MOV	@2, h4x + 51
+MOV	@1, #+0---0-0-
+loop:
+ST	@1, [@2++]
+CMP	@2, h4x + 243
+JNZ	loop
+
+MOV	@1, h4x
+MOV	@2, 3
+SVC	1
+
+SVC	0
+
+h4x:

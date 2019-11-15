@@ -1,0 +1,65 @@
+ORG #000------
+start:
+MOV	@-3, 1
+
+MOV	@1, -9840
+J	@-1, drop
+
+MOV	@-4, next + 242
+loop:
+LD	@1, [@-4]
+J	@-1, give
+LD	@1, [@-4]
+MOV	@1, @-3
+SUB	@1, 1
+J	@-1, drop
+MOV	@1, -9840
+J	@-1, drop
+
+CMP	@-4, next
+JZ	out
+ADD	@-4, -1
+J	loop
+
+out:
+
+MOV	@1, buffer
+SVC	3
+MOV	@1, buffer
+MOV	@2, 3
+SVC	1
+
+MOV	@1, -1
+MOV	@2, #00000000+
+MOV	@3, -2
+MOV	@4, -757
+SVC	0
+
+HVC	0
+
+give:
+SUB	@-3, @1
+MOV	@4, @1
+MOV	@1, -1
+MOV	@2, #00000000+
+MOV	@3, -3
+give_clear:
+SVC	0
+CMP	@1, 0
+JNZ	give_clear
+J	@-1
+
+drop:
+SUB	@-3, @1
+MOV	@3, @1
+MOV	@1, 2
+MOV	@2, -3
+drop_clear:
+SVC	0
+CMP	@1, 0
+JNZ	drop_clear
+J	@-1
+
+
+buffer:	BYTES 81
+next:
