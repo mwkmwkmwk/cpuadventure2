@@ -1,5 +1,7 @@
 This is the CPU Adventure 2 task from the Dragon CTF 2019.
 
+.. image:: adv2.png
+
 The task is about reverse engineering and pwning code for a custom CPU
 architecture, based on a balanced ternary system.
 
