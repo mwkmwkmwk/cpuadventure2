@@ -5,8 +5,8 @@ architecture, based on a balanced ternary system.
 
 If you want to solve it the intended way, you can look at the following files:
 
-- `emu`
-- `*.nb`
+- ``emu``
+- ``*.nb``
 
 You're supposed to pwn the game running on a remote server.  To set up your
 own server, do the following:
@@ -21,10 +21,10 @@ To connect to it and play the game:
 socat tcp4-connect:127.0.0.1:1337 fd:0,rawer
 ```
 
-The author's solution is in the `solution` directory.
+The author's solution is in the ``solution`` directory.
 
-There are three stages in this challenge, with the flags in `flag1.txt`, `flag2.txt`,
-and `flag3.txt`.  The original task decriptions from the CTF are:
+There are three stages in this challenge, with the flags in ``flag1.txt``, ``flag2.txt``,
+and ``flag3.txt``.  The original task decriptions from the CTF are:
 
 
 CPU Adventure 2.1: introspection
