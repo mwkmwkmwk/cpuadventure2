@@ -13,15 +13,11 @@ If you want to solve it the intended way, you can look at the following files:
 You're supposed to pwn the game running on a remote server.  To set up your
 own server, do the following:
 
-```
-socat tcp4-listen:1337,fork,reuseaddr exec:./emu,pty,setsid,setpgid,ctty,stderr,rawer
-```
+    socat tcp4-listen:1337,fork,reuseaddr exec:./emu,pty,setsid,setpgid,ctty,stderr,rawer
 
 To connect to it and play the game:
 
-```
-socat tcp4-connect:127.0.0.1:1337 fd:0,rawer
-```
+    socat tcp4-connect:127.0.0.1:1337 fd:0,rawer
 
 The author's solution is in the ``solution`` directory.
 
